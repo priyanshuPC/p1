@@ -1,19 +1,9 @@
-// API Service
-const API = {
-    // Authentication
-    login: async (username, password) => {
-        const response = await fetch('/api/auth/login', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ username, password })
-        });
-        return handleResponse(response);
-    },
+const API_BASE_URL = 'http://localhost:8080/api';
 
+// Authentication API
+const authApi = {
     register: async (userData) => {
-        const response = await fetch('/api/auth/register', {
+        const response = await fetch(`${API_BASE_URL}/auth/register`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -23,21 +13,47 @@ const API = {
         return handleResponse(response);
     },
 
-    // Inventory
-    getAllItems: async () => {
-        const response = await fetch('/api/inventory');
+    login: async (credentials) => {
+        const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                username: credentials.username,
+                password: credentials.password
+            })
+        });
         return handleResponse(response);
     },
 
-    getItemById: async (id) => {
-        const response = await fetch(`/api/inventory/${id}`);
+    logout: () => {
+        localStorage.removeItem('token');
+        window.location.href = '/';
+    }
+};
+
+// Inventory API
+const inventoryApi = {
+    getAllItems: async () => {
+        const response = await fetch(`${API_BASE_URL}/inventory`, {
+            headers: getAuthHeaders()
+        });
+        return handleResponse(response);
+    },
+
+    getItem: async (id) => {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}`, {
+            headers: getAuthHeaders()
+        });
         return handleResponse(response);
     },
 
     createItem: async (itemData) => {
-        const response = await fetch('/api/inventory', {
+        const response = await fetch(`${API_BASE_URL}/inventory`, {
             method: 'POST',
             headers: {
+                ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(itemData)
@@ -46,9 +62,10 @@ const API = {
     },
 
     updateItem: async (id, itemData) => {
-        const response = await fetch(`/api/inventory/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}`, {
             method: 'PUT',
             headers: {
+                ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(itemData)
@@ -57,27 +74,35 @@ const API = {
     },
 
     deleteItem: async (id) => {
-        const response = await fetch(`/api/inventory/${id}`, {
-            method: 'DELETE'
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
         });
         return handleResponse(response);
     },
 
     getLowStockItems: async () => {
-        const response = await fetch('/api/inventory/low-stock');
+        const response = await fetch(`${API_BASE_URL}/inventory/low-stock`, {
+            headers: getAuthHeaders()
+        });
         return handleResponse(response);
     },
 
     getExpiringItems: async (daysThreshold = 7) => {
-        const response = await fetch(`/api/inventory/expiring?daysThreshold=${daysThreshold}`);
+        const response = await fetch(`${API_BASE_URL}/inventory/expiring?daysThreshold=${daysThreshold}`, {
+            headers: getAuthHeaders()
+        });
         return handleResponse(response);
-    },
+    }
+};
 
-    // Stock Movements
+// Stock Movement API
+const stockMovementApi = {
     createMovement: async (movementData) => {
-        const response = await fetch('/api/movements', {
+        const response = await fetch(`${API_BASE_URL}/movements`, {
             method: 'POST',
             headers: {
+                ...getAuthHeaders(),
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify(movementData)
@@ -85,18 +110,34 @@ const API = {
         return handleResponse(response);
     },
 
-    getMovementsByItemId: async (itemId) => {
-        const response = await fetch(`/api/movements/item/${itemId}`);
+    getMovementsByItem: async (itemId) => {
+        const response = await fetch(`${API_BASE_URL}/movements/item/${itemId}`, {
+            headers: getAuthHeaders()
+        });
         return handleResponse(response);
     },
 
     getMovementsByDateRange: async (startDate, endDate) => {
-        const response = await fetch(`/api/movements/date-range?startDate=${startDate}&endDate=${endDate}`);
+        const response = await fetch(`${API_BASE_URL}/movements/date-range`, {
+            method: 'POST',
+            headers: {
+                ...getAuthHeaders(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ startDate, endDate })
+        });
         return handleResponse(response);
     }
 };
 
-// Helper function to handle API responses
+// Helper functions
+function getAuthHeaders() {
+    const token = localStorage.getItem('token');
+    return {
+        'Authorization': `Bearer ${token}`
+    };
+}
+
 async function handleResponse(response) {
     if (!response.ok) {
         const error = await response.json();
@@ -105,5 +146,4 @@ async function handleResponse(response) {
     return response.json();
 }
 
-// Export the API object
-window.API = API; 
+export { authApi, inventoryApi, stockMovementApi }; 

@@ -1,44 +1,153 @@
-// Main JavaScript file
+import { authApi, inventoryApi, stockMovementApi } from './api.js';
+
+// DOM Elements
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const loginModal = document.getElementById('loginModal');
+const registerModal = document.getElementById('registerModal');
+const inventoryTable = document.getElementById('inventoryTable');
+const stockMovementsTable = document.getElementById('stockMovementsTable');
+const addItemForm = document.getElementById('addItemForm');
+const addMovementForm = document.getElementById('addMovementForm');
+const reportForm = document.getElementById('reportForm');
+const reportResults = document.getElementById('reportResults');
+const loginBtn = document.getElementById('loginBtn');
+const registerBtn = document.getElementById('registerBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+
+// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize the application
     initializeApp();
+    setupEventListeners();
 });
 
-// Application state
-let currentUser = null;
-let inventoryItems = [];
-let stockMovements = [];
-
-// Initialize application
-async function initializeApp() {
-    // Check authentication status
-    checkAuthStatus();
-    
-    // Initialize event listeners
-    initializeEventListeners();
-    
-    // Load initial data
-    await loadInitialData();
-}
-
-// Check authentication status
-async function checkAuthStatus() {
-    try {
-        const token = localStorage.getItem('token');
-        if (token) {
-            // TODO: Implement token validation
-            showPage('dashboard');
-        } else {
-            showPage('login');
-        }
-    } catch (error) {
-        console.error('Auth check failed:', error);
-        showPage('login');
+function setupEventListeners() {
+    // Login button click
+    if (loginBtn) {
+        loginBtn.addEventListener('click', () => {
+            const modal = new bootstrap.Modal(loginModal);
+            modal.show();
+        });
     }
-}
 
-// Initialize event listeners
-function initializeEventListeners() {
+    // Register button click
+    if (registerBtn) {
+        registerBtn.addEventListener('click', () => {
+            const modal = new bootstrap.Modal(registerModal);
+            modal.show();
+        });
+    }
+
+    // Logout button click
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+            authApi.logout();
+        });
+    }
+
+    // Login form submission
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            
+            try {
+                const response = await authApi.login({ username, password });
+                localStorage.setItem('token', response.token);
+                bootstrap.Modal.getInstance(loginModal).hide();
+                showSuccess('Login successful!');
+                loadInitialData();
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+    }
+
+    // Register form submission
+    if (registerForm) {
+        registerForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('registerUsername').value;
+            const password = document.getElementById('registerPassword').value;
+            const email = document.getElementById('registerEmail').value;
+            
+            try {
+                await authApi.register({ username, password, email });
+                bootstrap.Modal.getInstance(registerModal).hide();
+                showSuccess('Registration successful! Please login.');
+                bootstrap.Modal.getInstance(loginModal).show();
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+    }
+
+    // Add Item form submission
+    if (addItemForm) {
+        addItemForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(addItemForm);
+            const itemData = {
+                name: formData.get('name'),
+                quantity: parseInt(formData.get('quantity')),
+                category: formData.get('category'),
+                expiryDate: formData.get('expiryDate'),
+                supplierName: formData.get('supplierName'),
+                supplierContact: formData.get('supplierContact'),
+                lowStockThreshold: parseInt(formData.get('lowStockThreshold'))
+            };
+            
+            try {
+                await inventoryApi.createItem(itemData);
+                bootstrap.Modal.getInstance(document.getElementById('addItemModal')).hide();
+                showSuccess('Item added successfully!');
+                loadInitialData();
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+    }
+
+    // Add Movement form submission
+    if (addMovementForm) {
+        addMovementForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(addMovementForm);
+            const movementData = {
+                inventoryItemId: parseInt(formData.get('inventoryItemId')),
+                quantity: parseInt(formData.get('quantity')),
+                type: formData.get('type'),
+                notes: formData.get('notes')
+            };
+            
+            try {
+                await stockMovementApi.createMovement(movementData);
+                bootstrap.Modal.getInstance(document.getElementById('addMovementModal')).hide();
+                showSuccess('Movement recorded successfully!');
+                loadStockMovements();
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+    }
+
+    // Report form submission
+    if (reportForm) {
+        reportForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            
+            try {
+                const movements = await stockMovementApi.getMovementsByDateRange(startDate, endDate);
+                displayReportResults(movements);
+            } catch (error) {
+                showError(error.message);
+            }
+        });
+    }
+
     // Navigation
     document.querySelectorAll('.nav-link').forEach(link => {
         link.addEventListener('click', (e) => {
@@ -47,68 +156,8 @@ function initializeEventListeners() {
             showPage(page);
         });
     });
-
-    // Login form
-    const loginForm = document.getElementById('loginForm');
-    if (loginForm) {
-        loginForm.addEventListener('submit', handleLogin);
-    }
-
-    // Register form
-    const registerForm = document.getElementById('registerForm');
-    if (registerForm) {
-        registerForm.addEventListener('submit', handleRegister);
-    }
-
-    // Add Item form
-    const addItemForm = document.getElementById('addItemForm');
-    if (addItemForm) {
-        addItemForm.addEventListener('submit', handleAddItem);
-    }
-
-    // Add Movement form
-    const addMovementForm = document.getElementById('addMovementForm');
-    if (addMovementForm) {
-        addMovementForm.addEventListener('submit', handleAddMovement);
-    }
-
-    // Report form
-    const reportForm = document.getElementById('reportForm');
-    if (reportForm) {
-        reportForm.addEventListener('submit', handleGenerateReport);
-    }
 }
 
-// Load initial data
-async function loadInitialData() {
-    try {
-        // Load inventory items
-        inventoryItems = await API.getAllItems();
-        updateInventoryTable();
-
-        // Load low stock items
-        const lowStockItems = await API.getLowStockItems();
-        updateLowStockItems(lowStockItems);
-
-        // Load expiring items
-        const expiringItems = await API.getExpiringItems();
-        updateExpiringItems(expiringItems);
-
-        // Load recent stock movements
-        const today = new Date();
-        const lastWeek = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-        stockMovements = await API.getMovementsByDateRange(
-            lastWeek.toISOString(),
-            today.toISOString()
-        );
-        updateStockMovementsTable();
-    } catch (error) {
-        console.error('Failed to load initial data:', error);
-        showError('Failed to load data. Please try again.');
-    }
-}
-
-// Show page
 function showPage(pageId) {
     // Hide all pages
     document.querySelectorAll('.page').forEach(page => {
@@ -120,113 +169,65 @@ function showPage(pageId) {
     if (selectedPage) {
         selectedPage.classList.add('active');
     }
+
+    // Update active nav link
+    document.querySelectorAll('.nav-link').forEach(link => {
+        link.classList.remove('active');
+        if (link.getAttribute('data-page') === pageId) {
+            link.classList.add('active');
+        }
+    });
 }
 
-// Handle login
-async function handleLogin(e) {
-    e.preventDefault();
-    const username = document.getElementById('loginUsername').value;
-    const password = document.getElementById('loginPassword').value;
-
+async function initializeApp() {
+    const token = localStorage.getItem('token');
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+    
     try {
-        const response = await API.login(username, password);
-        localStorage.setItem('token', response.token);
-        currentUser = response.user;
-        showPage('dashboard');
         await loadInitialData();
-        showSuccess('Login successful!');
     } catch (error) {
-        showError(error.message);
+        if (error.message.includes('401') || error.message.includes('403')) {
+            localStorage.removeItem('token');
+            showLoginModal();
+        } else {
+            showError(error.message);
+        }
     }
 }
 
-// Handle register
-async function handleRegister(e) {
-    e.preventDefault();
-    const userData = {
-        username: document.getElementById('registerUsername').value,
-        password: document.getElementById('registerPassword').value,
-        email: document.getElementById('registerEmail').value
-    };
-
+async function loadInitialData() {
     try {
-        await API.register(userData);
-        showSuccess('Registration successful! Please login.');
-        showPage('login');
+        const [items, lowStockItems, expiringItems] = await Promise.all([
+            inventoryApi.getAllItems(),
+            inventoryApi.getLowStockItems(),
+            inventoryApi.getExpiringItems()
+        ]);
+        
+        displayInventoryItems(items);
+        updateDashboard(lowStockItems, expiringItems);
     } catch (error) {
-        showError(error.message);
+        throw error;
     }
 }
 
-// Handle add item
-async function handleAddItem(e) {
-    e.preventDefault();
-    const itemData = {
-        name: document.getElementById('itemName').value,
-        quantity: parseInt(document.getElementById('itemQuantity').value),
-        category: document.getElementById('itemCategory').value,
-        expiryDate: document.getElementById('itemExpiryDate').value,
-        supplierName: document.getElementById('itemSupplierName').value,
-        supplierContact: document.getElementById('itemSupplierContact').value,
-        lowStockThreshold: parseInt(document.getElementById('itemLowStockThreshold').value)
-    };
-
-    try {
-        await API.createItem(itemData);
-        await loadInitialData();
-        $('#addItemModal').modal('hide');
-        showSuccess('Item added successfully!');
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-// Handle add movement
-async function handleAddMovement(e) {
-    e.preventDefault();
-    const movementData = {
-        itemId: parseInt(document.getElementById('movementItemId').value),
-        quantity: parseInt(document.getElementById('movementQuantity').value),
-        type: document.getElementById('movementType').value,
-        notes: document.getElementById('movementNotes').value
-    };
-
-    try {
-        await API.createMovement(movementData);
-        await loadInitialData();
-        $('#addMovementModal').modal('hide');
-        showSuccess('Movement recorded successfully!');
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-// Handle generate report
-async function handleGenerateReport(e) {
-    e.preventDefault();
-    const startDate = document.getElementById('reportStartDate').value;
-    const endDate = document.getElementById('reportEndDate').value;
-
-    try {
-        const movements = await API.getMovementsByDateRange(startDate, endDate);
-        displayReport(movements);
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-// Update inventory table
-function updateInventoryTable() {
-    const tbody = document.querySelector('#inventoryTable tbody');
+function displayInventoryItems(items) {
+    if (!inventoryTable) return;
+    
+    const tbody = inventoryTable.querySelector('tbody');
     tbody.innerHTML = '';
-
-    inventoryItems.forEach(item => {
+    
+    items.forEach(item => {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${item.name}</td>
             <td>${item.quantity}</td>
             <td>${item.category}</td>
             <td>${new Date(item.expiryDate).toLocaleDateString()}</td>
+            <td>${item.supplierName}</td>
+            <td>${item.supplierContact}</td>
             <td>
                 <button class="btn btn-sm btn-primary" onclick="editItem(${item.id})">Edit</button>
                 <button class="btn btn-sm btn-danger" onclick="deleteItem(${item.id})">Delete</button>
@@ -236,177 +237,143 @@ function updateInventoryTable() {
     });
 }
 
-// Update low stock items
-function updateLowStockItems(items) {
-    const container = document.getElementById('lowStockItems');
-    container.innerHTML = '';
-
-    items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'card mb-3';
-        card.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title">${item.name}</h5>
-                <p class="card-text">Current Stock: ${item.quantity}</p>
-                <p class="card-text">Threshold: ${item.lowStockThreshold}</p>
-            </div>
-        `;
-        container.appendChild(card);
-    });
+function updateDashboard(lowStockItems, expiringItems) {
+    const lowStockCount = document.getElementById('lowStockCount');
+    const expiringCount = document.getElementById('expiringCount');
+    const totalItems = document.getElementById('totalItems');
+    
+    if (lowStockCount) lowStockCount.textContent = lowStockItems.length;
+    if (expiringCount) expiringCount.textContent = expiringItems.length;
+    if (totalItems) totalItems.textContent = lowStockItems.length + expiringItems.length;
 }
 
-// Update expiring items
-function updateExpiringItems(items) {
-    const container = document.getElementById('expiringItems');
-    container.innerHTML = '';
-
-    items.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'card mb-3';
-        card.innerHTML = `
-            <div class="card-body">
-                <h5 class="card-title">${item.name}</h5>
-                <p class="card-text">Expires: ${new Date(item.expiryDate).toLocaleDateString()}</p>
-                <p class="card-text">Current Stock: ${item.quantity}</p>
-            </div>
-        `;
-        container.appendChild(card);
-    });
+async function loadStockMovements() {
+    try {
+        const movements = await stockMovementApi.getMovementsByDateRange(
+            new Date().toISOString().split('T')[0],
+            new Date().toISOString().split('T')[0]
+        );
+        displayStockMovements(movements);
+    } catch (error) {
+        showError(error.message);
+    }
 }
 
-// Update stock movements table
-function updateStockMovementsTable() {
-    const tbody = document.querySelector('#stockMovementsTable tbody');
+function displayStockMovements(movements) {
+    if (!stockMovementsTable) return;
+    
+    const tbody = stockMovementsTable.querySelector('tbody');
     tbody.innerHTML = '';
-
-    stockMovements.forEach(movement => {
+    
+    movements.forEach(movement => {
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>${movement.itemName}</td>
+            <td>${movement.inventoryItem.name}</td>
             <td>${movement.quantity}</td>
             <td>${movement.type}</td>
             <td>${new Date(movement.movementDate).toLocaleString()}</td>
-            <td>${movement.notes || '-'}</td>
+            <td>${movement.notes || ''}</td>
         `;
         tbody.appendChild(row);
     });
 }
 
-// Display report
-function displayReport(movements) {
-    const container = document.getElementById('reportResults');
-    container.innerHTML = '';
-
-    // Group movements by item
-    const groupedMovements = movements.reduce((acc, movement) => {
-        if (!acc[movement.itemName]) {
-            acc[movement.itemName] = [];
-        }
-        acc[movement.itemName].push(movement);
-        return acc;
-    }, {});
-
-    // Create report cards
-    Object.entries(groupedMovements).forEach(([itemName, itemMovements]) => {
-        const card = document.createElement('div');
-        card.className = 'card mb-3';
-        
-        const totalIn = itemMovements
-            .filter(m => m.type === 'IN')
-            .reduce((sum, m) => sum + m.quantity, 0);
-        
-        const totalOut = itemMovements
-            .filter(m => m.type === 'OUT')
-            .reduce((sum, m) => sum + m.quantity, 0);
-
-        card.innerHTML = `
-            <div class="card-header">
-                <h5 class="mb-0">${itemName}</h5>
-            </div>
-            <div class="card-body">
-                <p>Total In: ${totalIn}</p>
-                <p>Total Out: ${totalOut}</p>
-                <p>Net Change: ${totalIn - totalOut}</p>
-                <table class="table table-sm">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Type</th>
-                            <th>Quantity</th>
-                            <th>Notes</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${itemMovements.map(m => `
-                            <tr>
-                                <td>${new Date(m.movementDate).toLocaleString()}</td>
-                                <td>${m.type}</td>
-                                <td>${m.quantity}</td>
-                                <td>${m.notes || '-'}</td>
-                            </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
-            </div>
-        `;
-        container.appendChild(card);
-    });
-}
-
-// Show success message
-function showSuccess(message) {
-    const alert = document.createElement('div');
-    alert.className = 'alert alert-success alert-dismissible fade show';
-    alert.innerHTML = `
-        ${message}
-        <button type="button" class="close" data-dismiss="alert">
-            <span>&times;</span>
-        </button>
+function displayReportResults(movements) {
+    if (!reportResults) return;
+    
+    reportResults.innerHTML = `
+        <h3>Report Results</h3>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Quantity</th>
+                    <th>Type</th>
+                    <th>Date</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${movements.map(movement => `
+                    <tr>
+                        <td>${movement.inventoryItem.name}</td>
+                        <td>${movement.quantity}</td>
+                        <td>${movement.type}</td>
+                        <td>${new Date(movement.movementDate).toLocaleString()}</td>
+                        <td>${movement.notes || ''}</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
     `;
-    document.getElementById('alerts').appendChild(alert);
-    setTimeout(() => alert.remove(), 5000);
 }
 
-// Show error message
+function showLoginModal() {
+    const modal = new bootstrap.Modal(loginModal);
+    modal.show();
+}
+
 function showError(message) {
-    const alert = document.createElement('div');
-    alert.className = 'alert alert-danger alert-dismissible fade show';
-    alert.innerHTML = `
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+    alertDiv.innerHTML = `
         ${message}
-        <button type="button" class="close" data-dismiss="alert">
-            <span>&times;</span>
-        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.getElementById('alerts').appendChild(alert);
-    setTimeout(() => alert.remove(), 5000);
+    
+    // Find the first container element
+    const container = document.querySelector('.container');
+    if (container) {
+        // Insert at the beginning of the container
+        container.insertBefore(alertDiv, container.firstChild);
+    }
 }
 
-// Edit item
-async function editItem(id) {
-    const item = inventoryItems.find(i => i.id === id);
-    if (!item) return;
-
-    document.getElementById('editItemId').value = item.id;
-    document.getElementById('editItemName').value = item.name;
-    document.getElementById('editItemQuantity').value = item.quantity;
-    document.getElementById('editItemCategory').value = item.category;
-    document.getElementById('editItemExpiryDate').value = item.expiryDate;
-    document.getElementById('editItemSupplierName').value = item.supplierName;
-    document.getElementById('editItemSupplierContact').value = item.supplierContact;
-    document.getElementById('editItemLowStockThreshold').value = item.lowStockThreshold;
-
-    $('#editItemModal').modal('show');
+function showSuccess(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show';
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Find the first container element
+    const container = document.querySelector('.container');
+    if (container) {
+        // Insert at the beginning of the container
+        container.insertBefore(alertDiv, container.firstChild);
+    }
 }
 
-// Delete item
-async function deleteItem(id) {
-    if (!confirm('Are you sure you want to delete this item?')) return;
-
+// Make functions available globally
+window.editItem = async (id) => {
     try {
-        await API.deleteItem(id);
-        await loadInitialData();
-        showSuccess('Item deleted successfully!');
+        const item = await inventoryApi.getItem(id);
+        // Populate edit form and show modal
+        document.getElementById('editItemId').value = item.id;
+        document.getElementById('editItemName').value = item.name;
+        document.getElementById('editItemQuantity').value = item.quantity;
+        document.getElementById('editItemCategory').value = item.category;
+        document.getElementById('editItemExpiryDate').value = item.expiryDate;
+        document.getElementById('editItemSupplierName').value = item.supplierName;
+        document.getElementById('editItemSupplierContact').value = item.supplierContact;
+        document.getElementById('editItemLowStockThreshold').value = item.lowStockThreshold;
+        
+        const modal = new bootstrap.Modal(document.getElementById('editItemModal'));
+        modal.show();
     } catch (error) {
         showError(error.message);
     }
-} 
+};
+
+window.deleteItem = async (id) => {
+    if (confirm('Are you sure you want to delete this item?')) {
+        try {
+            await inventoryApi.deleteItem(id);
+            showSuccess('Item deleted successfully!');
+            loadInitialData();
+        } catch (error) {
+            showError(error.message);
+        }
+    }
+}; 
